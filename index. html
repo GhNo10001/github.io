@@ -1,0 +1,186 @@
+<script>
+/* ========== 仅展示修改/新增部分，直接整块复制替换 ========== */
+const CONFIG={
+  time:{start:{y:1,s:0,d:0,h:6},seasons:['春','夏','秋','冬'],hourName:['清晨','上午','正午','下午','傍晚','夜晚','深夜']},
+  expCurve:(lv)=>Math.floor(100*Math.pow(1.55,lv)),
+  realm:['凡人','炼气','筑基','金丹','元婴','化神','炼虚','合体','大乘','渡劫','飞升'],
+  beastAtk:t=>10*Math.pow(1.5,t),beastDef:t=>5*Math.pow(1.4,t),beastExp:t=>10*t*t,
+  eventCD:2,baseChoices:5,
+  entropy:{keys:['spirit','morality','order','life'],names:['灵脉','正邪','秩序','生机'],max:100,min:-100,critical:60},
+  pillPower:{疗伤:{hp:0.3},突破:{exp:0.2},解毒:{},淬体:{maxHp:0.1},负面:{hp:-0.2,exp:-0.1}}
+};
+const rand=(l,r)=>Math.floor(Math.random()*(r-l+1))+l;
+const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+const log=(txt,cls='')=>{const l=document.getElementById('log');l.insertAdjacentHTML('beforeend',`<span class="${cls}">${txt}</span>`);l.scrollTop=l.scrollHeight;};
+const ui=(id,val)=>document.getElementById(id).textContent=val;
+const bar=(id,p)=>document.getElementById(id).style.width=(p*100).toFixed(1)+'%';
+
+const S={hp:100,maxHp:100,mp:50,maxMp:50,exp:0,lv:0,atk:10,def:5,wux:10,qiy:50,root:'五行杂灵根',sect:'散修',bag:[],cd:0,time:{...CONFIG.time.start},entropy:{spirit:0,morality:0,order:0,life:0}};
+
+function addTime(h=1){
+  S.time.h+=h;if(S.time.h>=24){S.time.h-=24;S.time.d++;}
+  if(S.time.d>=90){S.time.d-=90;S.time.s++;if(S.time.s>=4){S.time.s-=4;S.time.y++;}}
+  const sn=CONFIG.time.seasons[S.time.s],hn=CONFIG.time.hourName[Math.floor(S.time.h/4)];
+  ui('worldTime',`第${S.time.y}年·${sn}·${hn}`);
+}
+function gainExp(n){
+  S.exp+=n;log(`修为 +${n}`,'special');
+  const need=CONFIG.expCurve(S.lv);
+  if(S.exp>=need){S.exp-=need;S.lv++;log(`突破至 ${CONFIG.realm[S.lv]}!`,'special');
+  S.maxHp+=30;S.hp=S.maxHp;S.maxMp+=20;S.mp=S.maxMp;S.atk+=5;S.def+=3;S.wux+=2;
+  if(S.lv>=10)return ending('飞升成功，游戏通关！');}
+}
+function combat(tier){
+  const bat=CONFIG.beastAtk(tier),bdef=CONFIG.beastDef(tier),bexp=CONFIG.beastExp(tier);
+  const pdmg=Math.max(1,S.atk-bdef),bdmg=Math.max(1,bat-S.def);
+  let pHp=S.hp,bHp=bat*3;
+  while(pHp>0&&bHp>0){bHp-=pdmg;if(bHp<=0)break;pHp-=bdmg;}
+  if(pHp<=0){S.hp=0;update();return log('你被妖兽击杀...','danger');}
+  S.hp=pHp;gainExp(bexp);log(`击败 ${tier} 阶妖兽，获得修为 ${bexp}`,'special');
+}
+function changeEntropy(key,delta){
+  S.entropy[key]=clamp(S.entropy[key]+delta,CONFIG.entropy.min,CONFIG.entropy.max);
+  ui(key,S.entropy[key]);
+  if(Math.abs(S.entropy[key])>=CONFIG.entropy.critical)log(`${CONFIG.entropy.names[CONFIG.entropy.keys.indexOf(key)]}维度发生质变！`,'special');
+}
+function renderBag(){
+  const b=document.getElementById('bag');
+  if(!S.bag.length){b.textContent='空';return;}
+  b.innerHTML='';
+  S.bag.forEach((it,idx)=>{
+    const span=document.createElement('span');span.textContent=it+' ';
+    const use=document.createElement('span');use.className='item-use';use.textContent='使用';
+    use.onclick=()=>useItem(it,idx);span.appendChild(use);b.appendChild(span);
+  });
+}
+function useItem(it,idx){
+  const power=CONFIG.pillPower[it];
+  if(!power){log('该物品无法直接使用','danger');return;}
+  if(it==='疗伤'){S.hp=clamp(S.hp+S.maxHp*power.hp,0,S.maxHp);log('伤势恢复','safe');}
+  if(it==='突破'){gainExp(Math.floor(CONFIG.expCurve(S.lv)*power.exp));}
+  if(it==='淬体'){S.maxHp+=Math.floor(S.maxHp*power.maxHp);S.hp=S.maxHp;log('体魄增强','safe');}
+  S.bag.splice(idx,1);renderBag();update();
+}
+
+/* ============================ 初始画面 ============================ */
+function showFirstScreen(){
+  const ch=[
+    {txt:'闭关修炼',req:{mp:10},eff:{exp:rand(15,25),mp:-10}},
+    {txt:'四周探索',eff:{},act:'explore'},
+    {txt:'寻找妖兽',eff:{},act:'hunt'},
+    {txt:'前往坊市',eff:{},act:'market'},
+    {txt:'占卜吉凶',req:{mp:5},eff:{qiy:rand(-5,10),mp:-5}}
+  ];
+  return {title:'初入修仙界',text:'你站在山脚下，天地灵气扑面而来，下一步打算做什么？',ch};
+}
+
+/* ============================ 事件循环 ============================ */
+let currentEvent=null;
+function continueFlow(){
+  if(S.hp<=0)return ending('你因伤势过重而陨落...');
+  addTime(rand(1,3));
+  if(S.cd>0){S.cd--;showEvent(currentEvent||showFirstScreen());return;}
+  currentEvent=createEvent();showEvent(currentEvent);
+}
+function createEvent(){
+  const spirit=S.entropy.spirit;
+  if(spirit>=60 && !S.flags.boil1){S.flags.boil1=1;return boilChain1();}
+  if(spirit>=80 && S.flags.boil1===1){S.flags.boil1=2;return boilChain2();}
+  const ch=[
+    {txt:'闭关修炼',req:{mp:10},eff:{exp:rand(15,25),mp:-10}},
+    {txt:'四周探索',eff:{},act:'explore'},
+    {txt:'寻找妖兽',eff:{},act:'hunt'},
+    {txt:'前往坊市',eff:{},act:'market'},
+    {txt:'占卜吉凶',req:{mp:5},eff:{qiy:rand(-5,10),mp:-5}}
+  ];
+  return {title:'日常',text:'你在世间游荡，下一步打算做什么？',ch};
+}
+function boilChain1(){
+  const text='灵脉喷涌，大地龟裂，中央形成璀璨灵池！';
+  const ch=[
+    {txt:'潜入池底夺核心',req:{hp:50},eff:{hp:-30,exp:40,spirit:15}},
+    {txt:'布阵安抚灵脉',req:{mp:30,wux:20},eff:{mp:-20,spirit:10,order:5}},
+    {txt:'通知附近宗门',eff:{reputation:20,spirit:-5,morality:10}},
+    {txt:'就地打坐吸灵气',eff:{exp:20,spirit:5,life:5}},
+    {txt:'录制灵脉异象出售',eff:{bag:'灵脉影像',spirit:-10,qiy:-5}}
+  ];
+  return {title:'灵脉沸腾·初现',text,ch};
+}
+function boilChain2(){
+  const text='灵脉核心孕育出「祥瑞灵宠」幼体，众多修士虎视眈眈！';
+  const ch=[
+    {txt:'滴血认主',req:{qiy:60},eff:{bag:'祥瑞灵宠',spirit:10,life:10}},
+    {txt:'护它周全（战）',eff:{},act:'protectPet'},
+    {txt:'坐山观虎斗',eff:{spirit:-10,order:-5,reputation:-10}},
+    {txt:'与宗门合作',req:{sect:'天元宗'},eff:{spirit:5,morality:10,bag:'宗门谢礼'}},
+    {txt:'拍照跑路',eff:{bag:'灵宠影像',qiy:-10,spirit:-5}}
+  ];
+  return {title:'灵脉沸腾·祥瑞',text,ch};
+}
+function showEvent(ev){
+  currentEvent=ev;
+  ui('eventTitle',ev.title);
+  ui('story',ev.text);
+  const box=document.getElementById('choices');box.innerHTML='';
+  ev.ch.forEach(c=>{
+    const btn=document.createElement('button');btn.className='choice';
+    let ok=true,reqTxt='';
+    if(c.req){
+      for(let k in c.req){
+        if(k==='hp'&&S.hp<c.req[k])ok=false;
+        if(k==='mp'&&S.mp<c.req[k])ok=false;
+        if(k==='wux'&&S.wux<c.req[k])ok=false;
+        if(k==='qiy'&&S.qiy<c.req[k])ok=false;
+      }
+      if(!ok){btn.classList.add('locked');reqTxt=' (条件不足)';}
+    }
+    btn.innerHTML=c.txt+reqTxt;
+    btn.onclick=()=>doChoice(c,ev);
+    box.appendChild(btn);
+  });
+}
+function doChoice(c,ev){
+  if(c.act==='explore'){log('你探查到四周灵气波动...');gainExp(rand(5,15));}
+  if(c.act==='hunt')combat(rand(1,3));
+  if(c.act==='market'){log('坊市热闹，你交易了一番...');S.bag.push('随机道具');gainExp(rand(5,10));}
+  if(c.act==='protectPet'){
+    combat(rand(3,5));
+    if(S.hp>0){log('你成功护住祥瑞灵宠！','special');S.bag.push('祥瑞灵宠');}
+  }
+  if(c.eff)applyEff(c.eff);
+  S.cd=CONFIG.eventCD;
+  continueFlow();
+}
+function applyEff(e){
+  for(let k in e){
+    if(k==='bag'){S.bag.push(e[k]);log(`获得 ${e[k]}`);}
+    if(k==='exp')gainExp(e[k]);
+    if(k==='hp'){S.hp=clamp(S.hp+e[k],0,S.maxHp);}
+    if(k==='mp'){S.mp=clamp(S.mp+e[k],0,S.maxMp);}
+    if(k==='qiy')S.qiy=clamp(S.qiy+e[k],0,100);
+    if(k==='reputation')log(`声望变化 ${e[k]}`);
+    if(CONFIG.entropy.keys.includes(k))changeEntropy(k,e[k]);
+  }update();renderBag();
+}
+function update(){
+  ui('level',CONFIG.realm[S.lv]);
+  ui('hp',`${S.hp}/${S.maxHp}`);bar('hpBar',S.hp/S.maxHp);
+  ui('mp',`${S.mp}/${S.maxMp}`);bar('mpBar',S.mp/S.maxMp);
+  ui('exp',S.exp);ui('atk',S.atk);ui('def',S.def);ui('wux',S.wux);ui('qiy',S.qiy);
+  ui('root',S.root);ui('sect',S.sect);
+  for(const k of CONFIG.entropy.keys)ui(k,S.entropy[k]);
+  renderBag();
+}
+function ending(reason){
+  document.getElementById('endReason').textContent=reason;
+  document.getElementById('endScreen').style.display='flex';
+}
+function startGame(){
+  document.getElementById('startScreen').style.display='none';
+  document.getElementById('game').style.display='flex';
+  update();renderBag();
+  continueFlow();
+}
+</script>
+</body>
+</html>

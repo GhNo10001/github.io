@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+  <title>修仙世界·熵变系统</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- 开始界面 -->
+  <div id="startScreen" class="screen">
+    <div class="start-box">
+      <h2>修仙世界·熵变系统</h2>
+      <button class="big-btn" onclick="Main.startGame()">开始游戏</button>
+    </div>
+  </div>
+
+  <!-- 结束界面 -->
+  <div id="endScreen" class="screen" style="display:none;">
+    <div class="end-box">
+      <h2>游戏结束</h2>
+      <p id="endReason"></p>
+      <button class="big-btn" onclick="location.reload()">重新开始</button>
+    </div>
+  </div>
+
+  <!-- 主游戏 -->
+  <div id="game" class="screen" style="display:none;">
+    <div class="left card">
+      <div class="card-title" id="eventTitle">欢迎来到修仙世界</div>
+      <div id="story"></div>
+      <div id="choices"></div>
+    </div>
+    <div class="right">
+      <div class="card" id="roleCard"></div>
+      <div class="card" id="entropyCard"></div>
+      <div class="card" id="bagCard"></div>
+      <div class="card" id="logCard"></div>
+    </div>
+  </div>
+
+  <!-- 模块化脚本 -->
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
